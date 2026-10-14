@@ -36,6 +36,11 @@ import '../models/app_status.dart';
 const bool kSideloadOtaEnabled =
     bool.fromEnvironment('ENABLE_SIDELOAD_OTA', defaultValue: false);
 
+/// FEELS: build-time URL of a static `/app/status`-shaped JSON. Empty keeps
+/// the upstream companion-backend behaviour.
+const String kOtaStatusUrl =
+    String.fromEnvironment('OTA_STATUS_URL', defaultValue: '');
+
 /// A coarse progress event the UI renders.
 class OtaProgress {
   final String phase; // 'downloading' | 'installing' | 'error'
@@ -65,11 +70,16 @@ class UpdateService {
     // and a timestamp for every single app open, which is neither disclosed
     // nor refusable. The per-user off switch is [AppState.updateChecksEnabled].
     if (!kSideloadOtaEnabled) return null;
+    // FEELS: the personal build reads a static pointer published next to its
+    // own GitHub release instead of the companion backend.
     final base = CompanionClient.effectiveBase;
-    if (base.isEmpty) return null;
+    final url = kOtaStatusUrl.isNotEmpty
+        ? kOtaStatusUrl
+        : (base.isEmpty ? '' : '$base/app/status');
+    if (url.isEmpty) return null;
     try {
       final resp = await http
-          .get(Uri.parse('$base/app/status'))
+          .get(Uri.parse(url))
           .timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200 || resp.body.isEmpty) return null;
       final decoded = jsonDecode(resp.body);

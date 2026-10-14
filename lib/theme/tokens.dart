@@ -137,7 +137,7 @@ const Palette kLightPalette = Palette(
 /// become deep warm ember/earth fills so light ink sits on them comfortably.
 const Palette kDarkPalette = Palette(
   brightness: Brightness.dark,
-  bg: Color(0xFF14110D), // warm near-black char
+  bg: Color(0xFF0A0918), // FEELS: same as P.bg dark
   surface: Color(0xFF1E1A15), // cards, lifted off bg
   surfaceAlt: Color(0xFF2A251F), // inset / skeleton base
   surfaceSunk: Color(0xFF100E0A), // wells, darker than bg

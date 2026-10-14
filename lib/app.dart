@@ -13,6 +13,7 @@ import 'state/app_state.dart';
 import 'state/clock_format.dart';
 import 'state/locale_controller.dart';
 import 'state/prefs.dart';
+import 'sync/update_service.dart';
 import 'telemetry/telemetry_service.dart';
 import 'theme/theme_controller.dart';
 import 'theme/theme_switcher.dart';
@@ -129,13 +130,14 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
     final twelveHour = !context.watch<ClockFormatController>().resolve24h(
         MediaQuery.alwaysUse24HourFormatOf(context));
     return MaterialApp(
-      title: 'OpenStrap',
+      title: 'FEELS',
       debugShowCheckedModeBanner: false,
       // The palette is the design system's, the CHOICE is still the user's.
       theme: buildTheme(Brightness.light),
       darkTheme: buildTheme(Brightness.dark),
       themeMode: theme.materialThemeMode,
-      locale: locale.locale, // null = follow the OS locale
+      // FEELS: French unless the user picks another language in Profile.
+      locale: locale.locale ?? const Locale('fr'),
       // First, so a 12-hour choice reaches the time pickers (see the delegate).
       localizationsDelegates: [
         ClockMaterialLocalizationsDelegate(twelveHour: twelveHour),
@@ -334,7 +336,7 @@ class _InitFailed extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('OpenStrap could not start',
+                Text('FEELS could not start',
                     style: F.t2.copyWith(color: p.ink)),
                 const SizedBox(height: 8),
                 Text(
@@ -589,10 +591,14 @@ class _ShellState extends State<_Shell> {
     // SELECT, not watch: a bool that flips twice a workout, not the ~1 Hz
     // AppState tick.
     final live = context.select<AppState, bool>((a) => a.activeWorkout != null);
+    final update = context.select<AppState, bool>((a) => a.updateAvailable);
     return AppShell(
       key: ValueKey(_rev),
       initial: _domain,
-      banner: live ? const _LiveSessionBar() : null,
+      // A running session outranks an update: its bar is the only way back in.
+      banner: live
+          ? const _LiveSessionBar()
+          : (update ? const _UpdateBar() : null),
       onSelect: (d) {
         _domain = d;
         Prefs.setInt(Prefs.shellTabV2, d.index);
@@ -716,6 +722,96 @@ class _LiveSessionBar extends StatelessWidget {
                   ]),
             ),
             Icon(LucideIcons.chevronUp, size: 20, color: p.ink3),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// FEELS: a newer personal build is published. One tap downloads the APK and
+/// hands it to Android's installer; any failure falls back to the browser.
+class _UpdateBar extends StatefulWidget {
+  const _UpdateBar();
+
+  @override
+  State<_UpdateBar> createState() => _UpdateBarState();
+}
+
+class _UpdateBarState extends State<_UpdateBar> {
+  StreamSubscription<OtaProgress>? _sub;
+  String? _progress;
+
+  void _start(String url) {
+    if (_sub != null) return;
+    setState(() => _progress = 'Téléchargement…');
+    void fallback() {
+      _sub?.cancel();
+      _sub = null;
+      if (mounted) setState(() => _progress = null);
+      UpdateService.openInBrowser(url);
+    }
+
+    _sub = UpdateService.install(url).listen((e) {
+      if (!mounted) return;
+      switch (e.phase) {
+        case 'downloading':
+          setState(() => _progress = 'Téléchargement… ${e.percent} %');
+        case 'installing':
+          setState(() => _progress = 'Installation…');
+        default:
+          fallback();
+      }
+    }, onError: (_) => fallback(), onDone: () {
+      _sub = null;
+      if (mounted) setState(() => _progress = null);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final info = c.read<AppState>().appStatus?.update;
+    final url = info?.apkUrl;
+    if (url == null || url.isEmpty) return const SizedBox.shrink();
+    return Container(
+      decoration: BoxDecoration(
+        color: p.card,
+        border: Border(top: BorderSide(color: p.line)),
+      ),
+      child: Pressable(
+        semanticLabel: 'Installer la nouvelle version de FEELS',
+        onTap: () => _start(url),
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
+          child: Row(children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration:
+                  BoxDecoration(color: p.wash(C.purple), borderRadius: R.rSm),
+              child: Icon(LucideIcons.download, size: 16, color: p.on(C.purple)),
+            ),
+            const SizedBox(width: S.x3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Nouvelle version de FEELS',
+                      style: F.body.copyWith(color: p.ink)),
+                  Text(_progress ?? 'Touchez pour mettre à jour',
+                      style: F.cap.copyWith(color: p.ink3)),
+                ],
+              ),
+            ),
+            Icon(LucideIcons.chevronRight, size: 18, color: p.ink3),
           ]),
         ),
       ),

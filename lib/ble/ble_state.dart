@@ -250,10 +250,10 @@ BandStatus bandStatusFor({
       return const BandStatus(
         BandCondition.bluetoothDenied,
         'Bluetooth is switched off for this app',
-        'The phone is withholding the Bluetooth radio from OpenStrap, so '
+        'The phone is withholding the Bluetooth radio from FEELS, so '
             'nothing can be scanned or connected. This is not the band — '
             'walking closer to it will not help.',
-        fix: 'Open Settings → OpenStrap and allow Bluetooth',
+        fix: 'Open Settings → FEELS and allow Bluetooth',
       );
     case BleBlocker.adapterOff:
       return const BandStatus(

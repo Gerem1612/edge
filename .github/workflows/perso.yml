@@ -5,14 +5,14 @@ name: perso
 # https://github.com/Gerem1612/edge/releases/latest/download/edge-perso.apk
 on:
   push:
-    branches: [main]
+    branches: [main, feels]   # feels = work branch: build only, no release
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: perso
+  group: perso-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,9 +33,13 @@ jobs:
           flutter-version: '3.41.6'
 
       # No companion URL (no OTA from upstream, no announcements) and no health
-      # data contribution: the personal build stays fully local.
+      # data contribution: the personal build stays fully local. Self-update
+      # reads the static status.json published with this fork's latest release.
       - name: Write .env
-        run: echo "ENABLE_HEALTH_DATA_CONTRIBUTION=false" > .env
+        run: |
+          echo "ENABLE_HEALTH_DATA_CONTRIBUTION=false" > .env
+          echo "ENABLE_SIDELOAD_OTA=true" >> .env
+          echo "OTA_STATUS_URL=https://github.com/${{ github.repository }}/releases/latest/download/status.json" >> .env
 
       # Same drop-in the F-Droid recipe uses: no Firebase telemetry/crash upload.
       - name: Strip Firebase telemetry
@@ -47,6 +51,10 @@ jobs:
         run: echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
 
       - run: flutter pub get
+
+      - name: Analyze (informational)
+        continue-on-error: true
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib
 
       # versionCode = 1000 + run number: always increasing, so each new APK
       # installs over the previous one.
@@ -61,15 +69,33 @@ jobs:
             --build-number=$((1000 + ${{ github.run_number }}))
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk dist/edge-perso.apk
+          build=$((1000 + ${{ github.run_number }}))
+          ver=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          cat > dist/status.json <<JSON
+          {"update": {"latest_build": $build, "latest_version": "$ver-perso.${{ github.run_number }}",
+            "apk_url": "https://github.com/${{ github.repository }}/releases/download/perso-${{ github.run_number }}/edge-perso.apk",
+            "notes": "Perso ${{ github.run_number }}"}}
+          JSON
+          cat dist/status.json
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/heads/main'
+        with:
+          name: feels-apk
+          path: dist/edge-perso.apk
+          retention-days: 7
 
       - name: Publish release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: perso-${{ github.run_number }}
           name: Perso ${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: true
-          files: dist/edge-perso.apk
+          files: |
+            dist/edge-perso.apk
+            dist/status.json
           body: |
             Version perso, commit ${{ github.sha }}.
             Lien direct : https://github.com/${{ github.repository }}/releases/latest/download/edge-perso.apk

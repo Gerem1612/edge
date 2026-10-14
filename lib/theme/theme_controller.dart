@@ -57,7 +57,9 @@ class ThemeController extends ChangeNotifier {
   static AppThemeChoice _parse(String? s) => switch (s) {
         'light' => AppThemeChoice.light,
         'dark' => AppThemeChoice.dark,
-        _ => AppThemeChoice.system,
+        'system' => AppThemeChoice.system,
+        // FEELS: dark until the user picks otherwise.
+        _ => AppThemeChoice.dark,
       };
 
   AppThemeChoice get choice => _choice;

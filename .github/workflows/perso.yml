@@ -1,0 +1,75 @@
+name: perso
+
+# Personal build of the fork: every push to main produces a signed APK and
+# publishes it as the latest Release, so the phone can always download it from
+# https://github.com/Gerem1612/edge/releases/latest/download/edge-perso.apk
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: perso
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+
+      # No companion URL (no OTA from upstream, no announcements) and no health
+      # data contribution: the personal build stays fully local.
+      - name: Write .env
+        run: echo "ENABLE_HEALTH_DATA_CONTRIBUTION=false" > .env
+
+      # Same drop-in the F-Droid recipe uses: no Firebase telemetry/crash upload.
+      - name: Strip Firebase telemetry
+        run: cp docs/fdroid/firebase_bridge.floss.dart lib/telemetry/firebase_bridge.dart
+
+      - name: Restore release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+
+      - run: flutter pub get
+
+      # versionCode = 1000 + run number: always increasing, so each new APK
+      # installs over the previous one.
+      - name: Build release APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/release.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          flutter build apk --release --dart-define-from-file=.env \
+            --build-number=$((1000 + ${{ github.run_number }}))
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/edge-perso.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: perso-${{ github.run_number }}
+          name: Perso ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: dist/edge-perso.apk
+          body: |
+            Version perso, commit ${{ github.sha }}.
+            Lien direct : https://github.com/${{ github.repository }}/releases/latest/download/edge-perso.apk
